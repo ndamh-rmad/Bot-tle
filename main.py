@@ -28,9 +28,7 @@ async def send_random_ayah_with_audio(app):
     ayah_num = random.randint(1, surahs[surah_num])
     text = await get_ayah_text(surah_num, ayah_num)
     audio = get_audio_url(surah_num, ayah_num)
-    caption = f"📖 سورة {surah_names[surah_num]} - الآية {ayah_num}
-
-{text}"
+    caption = f"📖 سورة {surah_names[surah_num]} - الآية {ayah_num}\n\n{text}"
     await app.bot.send_audio(chat_id=CHANNEL_ID, audio=audio, caption=caption)
 
 app_web = Flask('')
