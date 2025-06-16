@@ -1,126 +1,119 @@
-
-import random
-import asyncio
+import os, random, asyncio, datetime
 import aiohttp
-import os
-from telegram import Update, InputMediaAudio
-from telegram.ext import Application, CommandHandler, ContextTypes
+import schedule
 from flask import Flask
 from threading import Thread
+from telegram.ext import Application, CommandHandler
+from collections import defaultdict
 
-TOKEN = "7805033056:AAFMHN1uZLY0wl3Tqnj4KxgHoW04bYBrZV0"
-CHANNEL_ID = "@dzmmm"
+# إعدادات البوت
+TOKEN = os.getenv("BOT_TOKEN", "توكن_البوت")
+CHANNEL_ID = os.getenv("CHANNEL_ID", "@dzmmm")
 
-# السور وأسماءها
 surahs = {
-    1: "الفاتحة", 2: "البقرة", 3: "آل عمران", 4: "النساء", 5: "المائدة", 6: "الأنعام", 7: "الأعراف",
-    8: "الأنفال", 9: "التوبة", 10: "يونس", 11: "هود", 12: "يوسف", 13: "الرعد", 14: "إبراهيم", 15: "الحجر",
-    16: "النحل", 17: "الإسراء", 18: "الكهف", 19: "مريم", 20: "طه", 21: "الأنبياء", 22: "الحج", 23: "المؤمنون",
-    24: "النور", 25: "الفرقان", 26: "الشعراء", 27: "النمل", 28: "القصص", 29: "العنكبوت", 30: "الروم",
-    31: "لقمان", 32: "السجدة", 33: "الأحزاب", 34: "سبإ", 35: "فاطر", 36: "يس", 37: "الصافات", 38: "ص",
-    39: "الزمر", 40: "غافر", 41: "فصلت", 42: "الشورى", 43: "الزخرف", 44: "الدخان", 45: "الجاثية",
-    46: "الأحقاف", 47: "محمد", 48: "الفتح", 49: "الحجرات", 50: "ق", 51: "الذاريات", 52: "الطور",
-    53: "النجم", 54: "القمر", 55: "الرحمن", 56: "الواقعة", 57: "الحديد", 58: "المجادلة", 59: "الحشر",
-    60: "الممتحنة", 61: "الصف", 62: "الجمعة", 63: "المنافقون", 64: "التغابن", 65: "الطلاق", 66: "التحريم",
-    67: "الملك", 68: "القلم", 69: "الحاقة", 70: "المعارج", 71: "نوح", 72: "الجن", 73: "المزمل", 74: "المدثر",
-    75: "القيامة", 76: "الإنسان", 77: "المرسلات", 78: "النبأ", 79: "النازعات", 80: "عبس", 81: "التكوير",
-    82: "الانفطار", 83: "المطففين", 84: "الانشقاق", 85: "البروج", 86: "الطارق", 87: "الأعلى", 88: "الغاشية",
-    89: "الفجر", 90: "البلد", 91: "الشمس", 92: "الليل", 93: "الضحى", 94: "الشرح", 95: "التين", 96: "العلق",
-    97: "القدر", 98: "البينة", 99: "الزلزلة", 100: "العاديات", 101: "القارعة", 102: "التكاثر", 103: "العصر",
-    104: "الهمزة", 105: "الفيل", 106: "قريش", 107: "الماعون", 108: "الكوثر", 109: "الكافرون", 110: "النصر",
-    111: "المسد", 112: "الإخلاص", 113: "الفلق", 114: "الناس"
+    112: "الإخلاص", 113: "الفلق", 114: "الناس", 18: "الكهف"
 }
+reciters = [
+    ("السديس", "https://server6.mp3quran.net/sds"),
+    ("الشرميم", "https://server10.mp3quran.net/shur"),
+    ("العجمي", "https://server7.mp3quran.net/ajm")
+]
 
-quraa = {
-    "Sudais": "عبد الرحمن السديس",
-    "Shuraym": "سعود الشريم",
-    "Ajmi": "أحمد العجمي",
-    "Hudhaify": "علي الحذيفي",
-    "Minshawi": "المنشاوي"
-}
+azkar_list = [
+    "سبحان الله", "الحمد لله", "لا إله إلا الله", "الله أكبر",
+    "لا حول ولا قوة إلا بالله", "اللهم صل وسلم على نبينا محمد"
+]
 
-qari_links = {
-    "Sudais": "Abdurrahmaan_As-Sudais_64kbps",
-    "Shuraym": "Saood_ash-Shuraym_64kbps",
-    "Ajmi": "Ahmad_Ajamy_64kbps",
-    "Hudhaify": "Ali_Hudhaify_64kbps",
-    "Minshawi": "Minshawy_Mujawwad_64kbps"
-}
+stats = defaultdict(int)
+last_sent = None
 
-bot_active = True
-
-
-
-async def send_full_surah(app: Application):
-    global bot_active
-    if not bot_active:
-        return
-
-    surah_num = random.randint(1, 114)
-    surah_name = surahs[surah_num]
-    qari_key = random.choice(list(qari_links.keys()))
-    qari_folder = qari_links[qari_key]
-    qari_name = quraa[qari_key]
-
-    audio_url = f"http://www.everyayah.com/data/{qari_folder}/{str(surah_num).zfill(3)}.mp3"
-    caption = f"📖 *سورة {surah_name}*\n🎙️ *القارئ:* {qari_name}\n\n🔊 تلاوة كاملة\n🕓 السورة القادمة خلال 6 ساعات بإذن الله."
-
-    # 1. أرسل الرسالة النصية مع الصوت
-    await app.bot.send_audio(chat_id=CHANNEL_ID, audio=audio_url, caption=caption, parse_mode='Markdown')
-
-    # 2. أرسل صور السورة من موقع موثوق (كل صفحة صورة)
-    img_base = f"https://www.quranflash.com/images/pages/"
-    start_page = (surah_num - 1) * 2 + 1
-    media = []
-    for i in range(3):  # أرسل أول 3 صفحات فقط للتجربة
-        page_num = start_page + i
-        img_url = f"{img_base}{str(page_num).zfill(3)}.jpg"
-        await app.bot.send_photo(chat_id=CHANNEL_ID, photo=img_url)
-
-# أوامر التحكم
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ البوت يعمل الآن." if bot_active else "⛔️ البوت متوقف مؤقتًا.")
-
-async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global bot_active
-    bot_active = True
-    await update.message.reply_text("✅ تم تشغيل البوت.")
-
-async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global bot_active
-    bot_active = False
-    await update.message.reply_text("⛔️ تم إيقاف البوت مؤقتًا.")
-
-async def next_surah(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_full_surah(context.application)
-
-# Flask للتشغيل المستمر
-flask_app = Flask('')
-
-@flask_app.route('/')
+# Web server (لبقاء البوت حي)
+app_web = Flask('')
+@app_web.route('/')
 def home():
-    return "✅ Bot is running"
-
+    return "✅ البوت شغال بإذن الله"
 def run():
-    flask_app.run(host="0.0.0.0", port=8080)
-
+    app_web.run(host='0.0.0.0', port=8080)
 def keep_alive():
     Thread(target=run).start()
 
-# جدولة كل 6 ساعات
-async def scheduler(app: Application):
-    while True:
-        await send_full_surah(app)
-        await asyncio.sleep(6 * 60 * 60)
+# إرسال سورة
+async def send_surah(app):
+    global last_sent
+    surah_num = random.choice(list(surahs.keys()))
+    reciter_name, reciter_url = random.choice(reciters)
+    name = surahs[surah_num]
+    audio = f"{reciter_url}/{str(surah_num).zfill(3)}001.mp3"
+    image = f"https://quran-images-api.vercel.app/surah/{surah_num}"
 
+    try:
+        await app.bot.send_message(chat_id=CHANNEL_ID, text=f"📖 سورة {name}\n🎙️ القارئ: {reciter_name}")
+        await app.bot.send_photo(chat_id=CHANNEL_ID, photo=image)
+        await app.bot.send_audio(chat_id=CHANNEL_ID, audio=audio, title=name)
+        stats["السور"] += 1
+        last_sent = datetime.datetime.now()
+    except Exception as e:
+        print("❌ خطأ أثناء الإرسال:", e)
+
+# إرسال أذكار
+async def send_zekr(app):
+    text = random.choice(azkar_list)
+    await app.bot.send_message(chat_id=CHANNEL_ID, text=f"🕊️ {text}")
+    stats["الأذكار"] += 1
+
+# حزمة الجمعة
+async def send_friday_package(app):
+    await app.bot.send_message(chat_id=CHANNEL_ID, text="🌸 جمعة مباركة! لا تنس قراءة سورة الكهف.")
+    await send_surah(app)
+    await app.bot.send_message(chat_id=CHANNEL_ID, text="🤲 اللهم اجعل هذا اليوم فرجًا لكل مهموم")
+
+# جدولة المهام
+async def job_scheduler(app):
+    schedule.every(6).hours.do(lambda: asyncio.create_task(send_surah(app)))
+    schedule.every(3).hours.do(lambda: asyncio.create_task(send_zekr(app)))
+    schedule.every().friday.at("08:00").do(lambda: asyncio.create_task(send_friday_package(app)))
+
+    while True:
+        schedule.run_pending()
+        await asyncio.sleep(30)
+
+# أوامر التليجرام
+async def start(update, context):
+    await update.message.reply_text("👋 أهلاً بك، البوت يعمل الآن.")
+
+async def help_command(update, context):
+    await update.message.reply_text(
+        "/start - بدء التشغيل\n"
+        "/help - الأوامر المتاحة\n"
+        "/stats - عرض الإحصائيات\n"
+        "/next - وقت الإرسال القادم\n"
+        "/now - إرسال سورة الآن يدويًا"
+    )
+
+async def stats_command(update, context):
+    report = "\n".join([f"{k}: {v}" for k, v in stats.items()]) or "لا توجد بيانات بعد."
+    await update.message.reply_text(f"📊 الإحصائيات:\n{report}")
+
+async def next_command(update, context):
+    now = datetime.datetime.now()
+    next_time = now + datetime.timedelta(hours=6)
+    await update.message.reply_text(f"⏰ الإرسال القادم: {next_time.strftime('%H:%M:%S')}")
+
+async def now_command(update, context):
+    await update.message.reply_text("📤 إرسال سورة الآن...")
+    await send_surah(context.application)
+
+# بدء التشغيل
 async def main():
     app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("start", start_bot))
-    app.add_handler(CommandHandler("stop", stop_bot))
-    app.add_handler(CommandHandler("next", next_surah))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("next", next_command))
+    app.add_handler(CommandHandler("now", now_command))
+
     keep_alive()
-    asyncio.create_task(scheduler(app))
+    asyncio.create_task(job_scheduler(app))
     await app.run_polling()
 
 if __name__ == "__main__":
